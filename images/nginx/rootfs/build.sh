@@ -281,6 +281,12 @@ make install
 # build and install lua-resty-waf with dependencies
 /install_lua_resty_waf.sh
 
+# build and install perimeterx-nginx-plugin with dependencies
+/install_perimeterx_nginx_plugin.sh
+
+# install nginx-google-oauth
+/install_nginx_google_oauth.sh
+
 # install openresty-gdb-utils
 cd /
 git clone --depth=1 https://github.com/openresty/openresty-gdb-utils.git

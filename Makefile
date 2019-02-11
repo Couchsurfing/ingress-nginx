@@ -16,7 +16,7 @@
 all: all-container
 
 # Use the 0.0 tag for testing, it shouldn't clobber any release builds
-TAG ?= 0.20.0
+TAG ?= 0.22.0
 REGISTRY ?= quay.io/kubernetes-ingress-controller
 DOCKER ?= docker
 SED_I ?= sed -i
@@ -50,9 +50,9 @@ DUMB_ARCH = ${ARCH}
 
 GOBUILD_FLAGS :=
 
-ALL_ARCH = amd64 arm arm64 ppc64le
+ALL_ARCH = amd64 arm64
 
-QEMUVERSION = v2.12.0-1
+QEMUVERSION = v3.0.0
 
 BUSTED_ARGS =-v --pattern=_test
 
@@ -61,23 +61,10 @@ IMAGE = $(REGISTRY)/$(IMGNAME)
 MULTI_ARCH_IMG = $(IMAGE)-$(ARCH)
 
 # Set default base image dynamically for each arch
-BASEIMAGE?=quay.io/kubernetes-ingress-controller/nginx-$(ARCH):0.65
+BASEIMAGE?=quay.io/kubernetes-ingress-controller/nginx-$(ARCH):0.75
 
-ifeq ($(ARCH),arm)
-	QEMUARCH=arm
-	GOARCH=arm
-	DUMB_ARCH=armhf
-endif
 ifeq ($(ARCH),arm64)
 	QEMUARCH=aarch64
-endif
-ifeq ($(ARCH),ppc64le)
-	QEMUARCH=ppc64le
-	GOARCH=ppc64le
-	DUMB_ARCH=ppc64el
-endif
-ifeq ($(ARCH),s390x)
-	QEMUARCH=s390x
 endif
 
 TEMP_DIR := $(shell mktemp -d)
@@ -118,7 +105,7 @@ container: clean-container .container-$(ARCH)
 	@echo "+ Copying artifact to temporary directory"
 	mkdir -p $(TEMP_DIR)/rootfs
 	cp bin/$(ARCH)/nginx-ingress-controller $(TEMP_DIR)/rootfs/nginx-ingress-controller
-
+	cp bin/$(ARCH)/dbg $(TEMP_DIR)/rootfs/dbg
 	@echo "+ Building container image $(MULTI_ARCH_IMG):$(TAG)"
 	cp -RP ./* $(TEMP_DIR)
 	$(SED_I) "s|BASEIMAGE|$(BASEIMAGE)|g" $(DOCKERFILE)
@@ -226,7 +213,7 @@ check_dead_links:
 
 .PHONY: dep-ensure
 dep-ensure:
-	dep version || go get -u github.com/golang/dep/cmd/dep
+	dep version || curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 	dep ensure -v
 	dep prune -v
 	find vendor -name '*_test.go' -delete

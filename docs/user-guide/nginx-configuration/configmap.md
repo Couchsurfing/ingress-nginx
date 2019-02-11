@@ -30,6 +30,7 @@ The following table shows a configuration option's name, type, and the default v
 |[add-headers](#add-headers)|string|""|
 |[allow-backend-server-header](#allow-backend-server-header)|bool|"false"|
 |[hide-headers](#hide-headers)|string array|empty|
+|[access-log-params](#access-log-params)|string|""|
 |[access-log-path](#access-log-path)|string|"/var/log/nginx/access.log"|
 |[error-log-path](#error-log-path)|string|"/var/log/nginx/error.log"|
 |[enable-dynamic-tls-records](#enable-dynamic-tls-records)|bool|"true"|
@@ -57,11 +58,12 @@ The following table shows a configuration option's name, type, and the default v
 |[keep-alive-requests](#keep-alive-requests)|int|100|
 |[large-client-header-buffers](#large-client-header-buffers)|string|"4 8k"|
 |[log-format-escape-json](#log-format-escape-json)|bool|"false"|
-|[log-format-upstream](#log-format-upstream)|string|`%v - [$the_real_ip] - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_length $request_time [$proxy_upstream_name] $upstream_addr $upstream_response_length $upstream_response_time $upstream_status`|
+|[log-format-upstream](#log-format-upstream)|string|`%v - [$the_real_ip] - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_length $request_time [$proxy_upstream_name] $upstream_addr $upstream_response_length $upstream_response_time $upstream_status $req_id`|
 |[log-format-stream](#log-format-stream)|string|`[$time_local] $protocol $status $bytes_sent $bytes_received $session_time`|
 |[enable-multi-accept](#enable-multi-accept)|bool|"true"|
 |[max-worker-connections](#max-worker-connections)|int|16384|
-|[map-hash-bucket-size](#max-worker-connections)|int|64|
+|[max-worker-open-files](#max-worker-open-files)|int|0|
+|[map-hash-bucket-size](#max-hash-bucket-size)|int|64|
 |[nginx-status-ipv4-whitelist](#nginx-status-ipv4-whitelist)|[]string|"127.0.0.1"|
 |[nginx-status-ipv6-whitelist](#nginx-status-ipv6-whitelist)|[]string|"::1"|
 |[proxy-real-ip-cidr](#proxy-real-ip-cidr)|[]string|"0.0.0.0/0"|
@@ -86,6 +88,7 @@ The following table shows a configuration option's name, type, and the default v
 |[proxy-protocol-header-timeout](#proxy-protocol-header-timeout)|string|"5s"|
 |[use-gzip](#use-gzip)|bool|"true"|
 |[use-geoip](#use-geoip)|bool|"true"|
+|[use-geoip2](#use-geoip2)|bool|"false"|
 |[enable-brotli](#enable-brotli)|bool|"false"|
 |[brotli-level](#brotli-level)|int|4|
 |[brotli-types](#brotli-types)|string|"application/xml+rss application/atom+xml application/javascript application/x-javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/plain text/x-component"|
@@ -105,7 +108,7 @@ The following table shows a configuration option's name, type, and the default v
 |[proxy-stream-timeout](#proxy-stream-timeout)|string|"600s"|
 |[proxy-stream-responses](#proxy-stream-responses)|int|1|
 |[bind-address](#bind-address)|[]string|""|
-|[use-forwarded-headers](#use-forwarded-headers)|bool|"true"|
+|[use-forwarded-headers](#use-forwarded-headers)|bool|"false"|
 |[forwarded-for-header](#forwarded-for-header)|string|"X-Forwarded-For"|
 |[compute-full-forwarded-for](#compute-full-forwarded-for)|bool|"false"|
 |[proxy-add-original-uri-header](#proxy-add-original-uri-header)|bool|"true"|
@@ -144,6 +147,7 @@ The following table shows a configuration option's name, type, and the default v
 |[http-redirect-code](#http-redirect-code)|int|308|
 |[proxy-buffering](#proxy-buffering)|string|"off"|
 |[limit-req-status-code](#limit-req-status-code)|int|503|
+|[limit-conn-status-code](#limit-conn-status-code)|int|503|
 |[no-tls-redirect-locations](#no-tls-redirect-locations)|string|"/.well-known/acme-challenge"|
 |[no-auth-locations](#no-auth-locations)|string|"/.well-known/acme-challenge"|
 |[block-cidrs](#block-cidrs)|[]string|""|
@@ -165,6 +169,13 @@ _**default:**_ empty
 
 _References:_
 [http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_hide_header](http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_hide_header)
+
+## access-log-params
+
+Additional params for access_log. For example, buffer=16k, gzip, flush=1m
+
+_References:_
+[http://nginx.org/en/docs/http/ngx_http_log_module.html#access_log](http://nginx.org/en/docs/http/ngx_http_log_module.html#access_log)
 
 ## access-log-path
 
@@ -358,7 +369,18 @@ _References:_
 
 ## max-worker-connections
 
-Sets the maximum number of simultaneous connections that can be opened by each [worker process](http://nginx.org/en/docs/ngx_core_module.html#worker_connections)
+Sets the [maximum number of simultaneous connections](http://nginx.org/en/docs/ngx_core_module.html#worker_connections) that can be opened by each worker process.
+0 will use the value of [max-worker-open-files](#max-worker-open-files).
+_**default:**_ 16384
+
+!!! tip
+    Using 0 in scenarios of high load improves performance at the cost of increasing RAM utilization (even on idle).
+
+## max-worker-open-files
+
+Sets the [maximum number of files](http://nginx.org/en/docs/ngx_core_module.html#worker_rlimit_nofile) that can be opened by each worker process.
+The default of 0 means "max open files (system's limit) / [worker-processes](#worker-processes) - 1024".
+_**default:**_ 0
 
 ## map-hash-bucket-size
 
@@ -497,6 +519,13 @@ The default mime type list to compress is: `application/atom+xml application/jav
 
 Enables or disables ["geoip" module](http://nginx.org/en/docs/http/ngx_http_geoip_module.html) that creates variables with values depending on the client IP address, using the precompiled MaxMind databases.
 _**default:**_ true
+
+> __Note:__ MaxMind legacy databases are discontinued and will not receive updates after 2019-01-02, cf. [discontinuation notice](https://support.maxmind.com/geolite-legacy-discontinuation-notice/). Consider [use-geoip2](#use-geoip2) below.
+
+## use-geoip2
+
+Enables the [geoip2 module](https://github.com/leev/ngx_http_geoip2_module) for NGINX.
+_**default:**_ false
 
 ## enable-brotli
 
@@ -810,6 +839,10 @@ Enables or disables [buffering of responses from the proxied server](http://ngin
 
 Sets the [status code to return in response to rejected requests](http://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_status). _**default:**_ 503
 
+## limit-conn-status-code
+
+Sets the [status code to return in response to rejected connections](http://nginx.org/en/docs/http/ngx_http_limit_conn_module.html#limit_conn_status). _**default:**_ 503
+
 ## no-tls-redirect-locations
 
 A comma-separated list of locations on which http requests will never get redirected to their https counterpart.
@@ -822,14 +855,14 @@ _**default:**_ "/.well-known/acme-challenge"
 
 ## block-cidrs
 
-A comma-separated list of IP addresses (or subnets), requestst from which have to be blocked globally.
+A comma-separated list of IP addresses (or subnets), request from which have to be blocked globally.
 
 _References:_
 [http://nginx.org/en/docs/http/ngx_http_access_module.html#deny](http://nginx.org/en/docs/http/ngx_http_access_module.html#deny)
 
 ## block-user-agents
 
-A comma-separated list of User-Agent, requestst from which have to be blocked globally.
+A comma-separated list of User-Agent, request from which have to be blocked globally.
 It's possible to use here full strings and regular expressions. More details about valid patterns can be found at `map` Nginx directive documentation.
 
 _References:_
@@ -837,7 +870,7 @@ _References:_
 
 ## block-referers
 
-A comma-separated list of Referers, requestst from which have to be blocked globally.
+A comma-separated list of Referers, request from which have to be blocked globally.
 It's possible to use here full strings and regular expressions. More details about valid patterns can be found at `map` Nginx directive documentation.
 
 _References:_

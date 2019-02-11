@@ -17,9 +17,11 @@ limitations under the License.
 package annotations
 
 import (
-	"github.com/golang/glog"
 	"github.com/imdario/mergo"
+	"k8s.io/ingress-nginx/internal/ingress/annotations/canary"
+	"k8s.io/ingress-nginx/internal/ingress/annotations/modsecurity"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/sslcipher"
+	"k8s.io/klog"
 
 	apiv1 "k8s.io/api/core/v1"
 	extensions "k8s.io/api/extensions/v1beta1"
@@ -33,7 +35,9 @@ import (
 	"k8s.io/ingress-nginx/internal/ingress/annotations/clientbodybuffersize"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/connection"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/cors"
+	"k8s.io/ingress-nginx/internal/ingress/annotations/customhttperrors"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/defaultbackend"
+	"k8s.io/ingress-nginx/internal/ingress/annotations/http2pushpreload"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/influxdb"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/ipwhitelist"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/loadbalancing"
@@ -67,14 +71,17 @@ type Ingress struct {
 	BackendProtocol      string
 	Alias                string
 	BasicDigestAuth      auth.Config
+	Canary               canary.Config
 	CertificateAuth      authtls.Config
 	ClientBodyBufferSize string
 	ConfigurationSnippet string
 	Connection           connection.Config
 	CorsConfig           cors.Config
+	CustomHTTPErrors     []int
 	DefaultBackend       *apiv1.Service
 	Denied               error
 	ExternalAuth         authreq.Config
+	HTTP2PushPreload     bool
 	Proxy                proxy.Config
 	RateLimit            ratelimit.Config
 	Redirect             redirect.Config
@@ -85,7 +92,7 @@ type Ingress struct {
 	SessionAffinity      sessionaffinity.Config
 	SSLPassthrough       bool
 	UsePortInRedirects   bool
-	UpstreamHashBy       string
+	UpstreamHashBy       upstreamhashby.Config
 	LoadBalancing        string
 	UpstreamVhost        string
 	Whitelist            ipwhitelist.SourceRange
@@ -94,6 +101,7 @@ type Ingress struct {
 	Logs                 log.Config
 	LuaRestyWAF          luarestywaf.Config
 	InfluxDB             influxdb.Config
+	ModSecurity          modsecurity.Config
 }
 
 // Extractor defines the annotation parsers to be used in the extraction of annotations
@@ -107,13 +115,16 @@ func NewAnnotationExtractor(cfg resolver.Resolver) Extractor {
 		map[string]parser.IngressAnnotation{
 			"Alias":                alias.NewParser(cfg),
 			"BasicDigestAuth":      auth.NewParser(auth.AuthDirectory, cfg),
+			"Canary":               canary.NewParser(cfg),
 			"CertificateAuth":      authtls.NewParser(cfg),
 			"ClientBodyBufferSize": clientbodybuffersize.NewParser(cfg),
 			"ConfigurationSnippet": snippet.NewParser(cfg),
 			"Connection":           connection.NewParser(cfg),
 			"CorsConfig":           cors.NewParser(cfg),
+			"CustomHTTPErrors":     customhttperrors.NewParser(cfg),
 			"DefaultBackend":       defaultbackend.NewParser(cfg),
 			"ExternalAuth":         authreq.NewParser(cfg),
+			"HTTP2PushPreload":     http2pushpreload.NewParser(cfg),
 			"Proxy":                proxy.NewParser(cfg),
 			"RateLimit":            ratelimit.NewParser(cfg),
 			"Redirect":             redirect.NewParser(cfg),
@@ -134,6 +145,7 @@ func NewAnnotationExtractor(cfg resolver.Resolver) Extractor {
 			"LuaRestyWAF":          luarestywaf.NewParser(cfg),
 			"InfluxDB":             influxdb.NewParser(cfg),
 			"BackendProtocol":      backendprotocol.NewParser(cfg),
+			"ModSecurity":          modsecurity.NewParser(cfg),
 		},
 	}
 }
@@ -147,7 +159,7 @@ func (e Extractor) Extract(ing *extensions.Ingress) *Ingress {
 	data := make(map[string]interface{})
 	for name, annotationParser := range e.annotations {
 		val, err := annotationParser.Parse(ing)
-		glog.V(5).Infof("annotation %v in Ingress %v/%v: %v", name, ing.GetNamespace(), ing.GetName(), val)
+		klog.V(5).Infof("annotation %v in Ingress %v/%v: %v", name, ing.GetNamespace(), ing.GetName(), val)
 		if err != nil {
 			if errors.IsMissingAnnotations(err) {
 				continue
@@ -168,11 +180,11 @@ func (e Extractor) Extract(ing *extensions.Ingress) *Ingress {
 			_, alreadyDenied := data[DeniedKeyName]
 			if !alreadyDenied {
 				data[DeniedKeyName] = err
-				glog.Errorf("error reading %v annotation in Ingress %v/%v: %v", name, ing.GetNamespace(), ing.GetName(), err)
+				klog.Errorf("error reading %v annotation in Ingress %v/%v: %v", name, ing.GetNamespace(), ing.GetName(), err)
 				continue
 			}
 
-			glog.V(5).Infof("error reading %v annotation in Ingress %v/%v: %v", name, ing.GetNamespace(), ing.GetName(), err)
+			klog.V(5).Infof("error reading %v annotation in Ingress %v/%v: %v", name, ing.GetNamespace(), ing.GetName(), err)
 		}
 
 		if val != nil {
@@ -182,7 +194,7 @@ func (e Extractor) Extract(ing *extensions.Ingress) *Ingress {
 
 	err := mergo.MapWithOverwrite(pia, data)
 	if err != nil {
-		glog.Errorf("unexpected error merging extracted annotations: %v", err)
+		klog.Errorf("unexpected error merging extracted annotations: %v", err)
 	}
 
 	return pia

@@ -20,6 +20,8 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	extensions "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/ingress-nginx/internal/ingress/annotations"
+	"k8s.io/ingress-nginx/internal/ingress/annotations/modsecurity"
 
 	"k8s.io/ingress-nginx/internal/ingress/annotations/auth"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/authreq"
@@ -51,9 +53,15 @@ type Configuration struct {
 	// Backends are a list of backends used by all the Ingress rules in the
 	// ingress controller. This list includes the default backend
 	Backends []*Backend `json:"backends,omitempty"`
-	// Servers
+	// Servers save the website config
 	Servers []*Server `json:"servers,omitempty"`
-	// PassthroughBackend contains the backends used for SSL passthrough.
+	// TCPEndpoints contain endpoints for tcp streams handled by this backend
+	// +optional
+	TCPEndpoints []L4Service `json:"tcpEndpoints,omitempty"`
+	// UDPEndpoints contain endpoints for udp streams handled by this backend
+	// +optional
+	UDPEndpoints []L4Service `json:"udpEndpoints,omitempty"`
+	// PassthroughBackends contains the backends used for SSL passthrough.
 	// It contains information about the associated Server Name Indication (SNI).
 	// +optional
 	PassthroughBackends []*SSLPassthroughBackend `json:"passthroughBackends,omitempty"`
@@ -63,6 +71,9 @@ type Configuration struct {
 
 	// ConfigurationChecksum contains the particular checksum of a Configuration object
 	ConfigurationChecksum string `json:"configurationChecksum,omitempty"`
+
+	// ControllerPodsCount contains the list of running ingress controller Pod(s)
+	ControllerPodsCount int `json:"controllerPodsCount,omitempty"`
 }
 
 // Backend describes one or more remote server/s (endpoints) associated with a service
@@ -82,9 +93,35 @@ type Backend struct {
 	// StickySessionAffinitySession contains the StickyConfig object with stickyness configuration
 	SessionAffinity SessionAffinityConfig `json:"sessionAffinityConfig"`
 	// Consistent hashing by NGINX variable
-	UpstreamHashBy string `json:"upstream-hash-by,omitempty"`
+	UpstreamHashBy UpstreamHashByConfig `json:"upstreamHashByConfig,omitempty"`
 	// LB algorithm configuration per ingress
 	LoadBalancing string `json:"load-balance,omitempty"`
+	// Denotes if a backend has no server. The backend instead shares a server with another backend and acts as an
+	// alternative backend.
+	// This can be used to share multiple upstreams in the sam nginx server block.
+	NoServer bool `json:"noServer"`
+	// Policies to describe the characteristics of an alternative backend.
+	// +optional
+	TrafficShapingPolicy TrafficShapingPolicy `json:"trafficShapingPolicy,omitempty"`
+	// Contains a list of backends without servers that are associated with this backend.
+	// +optional
+	AlternativeBackends []string `json:"alternativeBackends,omitempty"`
+}
+
+// TrafficShapingPolicy describes the policies to put in place when a backend has no server and is used as an
+// alternative backend
+// +k8s:deepcopy-gen=true
+type TrafficShapingPolicy struct {
+	// Weight (0-100) of traffic to redirect to the backend.
+	// e.g. Weight 20 means 20% of traffic will be redirected to the backend and 80% will remain
+	// with the other backend. 0 weight will not send any traffic to this backend
+	Weight int `json:"weight"`
+	// Header on which to redirect requests to this backend
+	Header string `json:"header"`
+	// HeaderValue on which to redirect requests to this backend
+	HeaderValue string `json:"headerValue"`
+	// Cookie on which to redirect requests to this backend
+	Cookie string `json:"cookie"`
 }
 
 // HashInclude defines if a field should be used or not to calculate the hash
@@ -109,7 +146,17 @@ type SessionAffinityConfig struct {
 type CookieSessionAffinity struct {
 	Name      string              `json:"name"`
 	Hash      string              `json:"hash"`
+	Expires   string              `json:"expires,omitempty"`
+	MaxAge    string              `json:"maxage,omitempty"`
 	Locations map[string][]string `json:"locations,omitempty"`
+	Path      string              `json:"path,omitempty"`
+}
+
+// UpstreamHashByConfig described setting from the upstream-hash-by* annotations.
+type UpstreamHashByConfig struct {
+	UpstreamHashBy           string `json:"upstream-hash-by,omitempty"`
+	UpstreamHashBySubset     bool   `json:"upstream-hash-by-subset,omitempty"`
+	UpstreamHashBySubsetSize int    `json:"upstream-hash-by-subset-size,omitempty"`
 }
 
 // Endpoint describes a kubernetes endpoint in a backend
@@ -175,7 +222,7 @@ type Location struct {
 	// uses the default backend.
 	IsDefBackend bool `json:"isDefBackend"`
 	// Ingress returns the ingress from which this location was generated
-	Ingress *extensions.Ingress `json:"ingress"`
+	Ingress *Ingress `json:"ingress"`
 	// Backend describes the name of the backend to use.
 	Backend string `json:"backend"`
 	// Service describes the referenced services from the ingress
@@ -200,6 +247,10 @@ type Location struct {
 	// authentication using an external provider
 	// +optional
 	ExternalAuth authreq.Config `json:"externalAuth,omitempty"`
+	// HTTP2PushPreload allows to configure the HTTP2 Push Preload from backend
+	// original location.
+	// +optional
+	HTTP2PushPreload bool `json:"http2PushPreload,omitempty"`
 	// RateLimit describes a limit in the number of connections per IP
 	// address or connections per second.
 	// The Redirect annotation precedes RateLimit
@@ -251,6 +302,12 @@ type Location struct {
 	// BackendProtocol indicates which protocol should be used to communicate with the service
 	// By default this is HTTP
 	BackendProtocol string `json:"backend-protocol"`
+	// CustomHTTPErrors specifies the error codes that should be intercepted.
+	// +optional
+	CustomHTTPErrors []int `json:"custom-http-errors"`
+	// ModSecurity allows to enable and configure modsecurity
+	// +optional
+	ModSecurity modsecurity.Config `json:"modsecurity"`
 }
 
 // SSLPassthroughBackend describes a SSL upstream server configured
@@ -274,6 +331,8 @@ type L4Service struct {
 	Backend L4Backend `json:"backend"`
 	// Endpoints active endpoints of the service
 	Endpoints []Endpoint `json:"endpoints,omitempty"`
+	// k8s Service
+	Service *apiv1.Service `json:"service,omitempty"`
 }
 
 // L4Backend describes the kubernetes service behind L4 Ingress service
@@ -290,4 +349,15 @@ type L4Backend struct {
 type ProxyProtocol struct {
 	Decode bool `json:"decode"`
 	Encode bool `json:"encode"`
+}
+
+// Ingress holds the definition of an Ingress plus its annotations
+type Ingress struct {
+	extensions.Ingress
+	ParsedAnnotations *annotations.Ingress
+}
+
+// GeneralConfig holds the definition of lua general configuration data
+type GeneralConfig struct {
+	ControllerPodsCount int `json:"controllerPodsCount"`
 }

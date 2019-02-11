@@ -17,124 +17,99 @@ limitations under the License.
 package annotations
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"strings"
 
 	"k8s.io/ingress-nginx/test/e2e/framework"
 )
 
 var _ = framework.IngressNginxDescribe("Annotations - Proxy", func() {
 	f := framework.NewDefaultFramework("proxy")
+	host := "proxy.foo.com"
 
 	BeforeEach(func() {
-		err := f.NewEchoDeploymentWithReplicas(2)
-		Expect(err).NotTo(HaveOccurred())
+		f.NewEchoDeploymentWithReplicas(2)
 	})
 
 	AfterEach(func() {
 	})
 
 	It("should set proxy_redirect to off", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-redirect-from": "off",
 			"nginx.ingress.kubernetes.io/proxy-redirect-to":   "goodbye.com",
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
 				return Expect(server).Should(ContainSubstring("proxy_redirect off;"))
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should set proxy_redirect to default", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-redirect-from": "default",
 			"nginx.ingress.kubernetes.io/proxy-redirect-to":   "goodbye.com",
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
 				return Expect(server).Should(ContainSubstring("proxy_redirect default;"))
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should set proxy_redirect to hello.com goodbye.com", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-redirect-from": "hello.com",
 			"nginx.ingress.kubernetes.io/proxy-redirect-to":   "goodbye.com",
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
 				return Expect(server).Should(ContainSubstring("proxy_redirect hello.com goodbye.com;"))
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should set proxy client-max-body-size to 8m", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-body-size": "8m",
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
 				return Expect(server).Should(ContainSubstring("client_max_body_size 8m;"))
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should not set proxy client-max-body-size to incorrect value", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-body-size": "15r",
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
 				return Expect(server).ShouldNot(ContainSubstring("client_max_body_size 15r;"))
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should set valid proxy timeouts", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-connect-timeout": "50",
 			"nginx.ingress.kubernetes.io/proxy-send-timeout":    "20",
@@ -142,20 +117,17 @@ var _ = framework.IngressNginxDescribe("Annotations - Proxy", func() {
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
-				return strings.Contains(server, "proxy_connect_timeout 50s;") && strings.Contains(server, "proxy_send_timeout 20s;") && strings.Contains(server, "proxy_read_timeout 20s;")
+				return strings.Contains(server, "proxy_connect_timeout 50s;") &&
+					strings.Contains(server, "proxy_send_timeout 20s;") &&
+					strings.Contains(server, "proxy_read_timeout 20s;")
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should not set invalid proxy timeouts", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-connect-timeout": "50k",
 			"nginx.ingress.kubernetes.io/proxy-send-timeout":    "20k",
@@ -163,95 +135,77 @@ var _ = framework.IngressNginxDescribe("Annotations - Proxy", func() {
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
-				return !strings.Contains(server, "proxy_connect_timeout 50ks;") && !strings.Contains(server, "proxy_send_timeout 20ks;") && !strings.Contains(server, "proxy_read_timeout 60s;")
+				return !strings.Contains(server, "proxy_connect_timeout 50ks;") &&
+					!strings.Contains(server, "proxy_send_timeout 20ks;") &&
+					!strings.Contains(server, "proxy_read_timeout 20ks;")
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should turn on proxy-buffering", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-buffering":   "on",
 			"nginx.ingress.kubernetes.io/proxy-buffer-size": "8k",
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
-				return strings.Contains(server, "proxy_buffering on;") && strings.Contains(server, "proxy_buffer_size 8k;") && strings.Contains(server, "proxy_buffers 4 8k;") && strings.Contains(server, "proxy_request_buffering on;")
+				return strings.Contains(server, "proxy_buffering on;") &&
+					strings.Contains(server, "proxy_buffer_size 8k;") &&
+					strings.Contains(server, "proxy_buffers 4 8k;") &&
+					strings.Contains(server, "proxy_request_buffering on;")
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should turn off proxy-request-buffering", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-request-buffering": "off",
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
 				return Expect(server).Should(ContainSubstring("proxy_request_buffering off;"))
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should build proxy next upstream", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-next-upstream":       "error timeout http_502",
 			"nginx.ingress.kubernetes.io/proxy-next-upstream-tries": "5",
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
-				return strings.Contains(server, "proxy_next_upstream error timeout http_502;") && strings.Contains(server, "proxy_next_upstream_tries 5;")
+				return strings.Contains(server, "proxy_next_upstream error timeout http_502;") &&
+					strings.Contains(server, "proxy_next_upstream_tries 5;")
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should setup proxy cookies", func() {
-		host := "proxy.foo.com"
 		annotations := map[string]string{
 			"nginx.ingress.kubernetes.io/proxy-cookie-domain": "localhost example.org",
 			"nginx.ingress.kubernetes.io/proxy-cookie-path":   "/one/ /",
 		}
 
 		ing := framework.NewSingleIngress(host, "/", host, f.IngressController.Namespace, "http-svc", 80, &annotations)
-		_, err := f.EnsureIngress(ing)
+		f.EnsureIngress(ing)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ing).NotTo(BeNil())
-
-		err = f.WaitForNginxServer(host,
+		f.WaitForNginxServer(host,
 			func(server string) bool {
-				return strings.Contains(server, "proxy_cookie_domain localhost example.org;") && strings.Contains(server, "proxy_cookie_path /one/ /;")
+				return strings.Contains(server, "proxy_cookie_domain localhost example.org;") &&
+					strings.Contains(server, "proxy_cookie_path /one/ /;")
 			})
-		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

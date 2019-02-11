@@ -39,6 +39,12 @@ worker_shutdown_timeout {{ $cfg.WorkerShutdownTimeout }} ;
 {{ $cfg.MainSnippet }}
 {{ end }}
 
+{{ if $cfg.EnablePerimeterX }}
+env PX_APP_ID;
+env PX_COOKIE_SECRET;
+env PX_AUTH_TOKEN;  
+{{ end }}
+
 events {
     multi_accept        {{ if $cfg.EnableMultiAccept }}on{{ else }}off{{ end }};
     worker_connections  {{ $cfg.MaxWorkerConnections }};
@@ -107,6 +113,17 @@ http {
         balancer.init_worker()
         {{ if $all.EnableMetrics }}
         monitor.init_worker()
+        {{ end }}
+
+        {{ if $cfg.EnablePerimeterX }}
+        local pxconfig = {}
+        pxconfig.px_enabled = true
+        pxconfig.px_appId = string.gsub(os.getenv("PX_APP_ID"), "[\\r\\n]+$", "")
+        pxconfig.cookie_secret = string.gsub(os.getenv("PX_COOKIE_SECRET"), "[\\r\\n]+$", "")
+        pxconfig.auth_token = string.gsub(os.getenv("PX_AUTH_TOKEN"), "[\\r\\n]+$", "")
+        pxconfig.blocking_score = 100
+        pxconfig.block_enabled = true
+        require ("px.utils.pxtimer").application(pxconfig)
         {{ end }}
     }
 

@@ -564,6 +564,11 @@ type Configuration struct {
 
 	// Block all requests with given Referer headers
 	BlockReferers []string `json:"block-referers"`
+
+	// EnablePerimeterX enables the nginx PerimeterX plugin
+	// https://github.com/PerimeterX/perimeterx-nginx-plugin
+	// By default this is disabled
+	EnablePerimeterX bool `json:"enable-perimeterx"`	
 }
 
 // NewDefault returns the default nginx configuration
